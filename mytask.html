@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Task Manager</title>
+<style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; background-color: #f4f7f6; color: #333; display: flex; justify-content: center; padding: 20px; margin: 0; }
+    .container { background: #fff; width: 100%; max-width: 600px; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h2 { text-align: center; color: #2c3e50; margin-bottom: 20px; font-size: 1.5rem; }
+    
+    /* 入力エリア */
+    .input-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+    
+    .row { display: flex; gap: 10px; }
+    
+    /* スマホ用にrowを縦並びにする設定 (画面幅が狭い時) */
+    @media (max-width: 480px) {
+        .row { flex-direction: column; }
+    }
+
+    input[type="text"], input[type="date"], select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+    /* 入力欄の幅調整 */
+    #task-input { flex-grow: 2; }
+    #desc-input { flex-grow: 1; }
+    #due-input { flex-grow: 0; }
+    
+    button#add-btn { padding: 12px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; width: 100%; transition: 0.2s; }
+    button#add-btn:hover { background-color: #2980b9; }
+
+    /* リストエリア */
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { background: #fff; border-bottom: 1px solid #eee; padding: 15px 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; transition: 0.2s; }
+    li:hover { background-color: #f9f9f9; }
+    li.completed .task-main { text-decoration: line-through; color: #aaa; }
+    li.completed .task-meta { opacity: 0.5; }
+    
+    .task-info { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; cursor: pointer; }
+    
+    .task-header { display: flex; align-items: center; gap: 8px; }
+    .task-title { font-weight: bold; font-size: 1.1rem; }
+    
+    .task-meta { font-size: 0.85rem; color: #666; display: flex; gap: 10px; flex-wrap: wrap; }
+    .meta-item { display: flex; align-items: center; gap: 4px; }
+    
+    /* 優先度ドット */
+    .priority-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .p-high { background-color: #e74c3c; box-shadow: 0 0 5px #e74c3c; }
+    .p-mid { background-color: #f1c40f; }
+    .p-low { background-color: #2ecc71; }
+
+    button.delete-btn { background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; align-self: center; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📋 タスク管理</h2>
+    
+    <div class="input-group">
+        <input type="text" id="task-input" placeholder="タスク名 (例: 会議資料作成)">
+        
+        <div class="row">
+            <input type="text" id="desc-input" placeholder="概要・詳細メモ">
+            <input type="date" id="due-input" title="期限">
+        </div>
+
+        <div class="row">
+            <select id="priority-select" style="flex-grow: 1;">
+                <option value="high">優先度: 高</option>
+                <option value="mid" selected>優先度: 中</option>
+                <option value="low">優先度: 低</option>
+            </select>
+        </div>
+        <button id="add-btn">タスクを追加</button>
+    </div>
+
+    <ul id="task-list">
+    </ul>
+</div>
+
+<script>
+    // 要素の取得
+    const taskInput = document.getElementById('task-input');
+    const descInput = document.getElementById('desc-input');
+    const dueInput = document.getElementById('due-input');
+    const prioritySelect = document.getElementById('priority-select');
+    const addBtn = document.getElementById('add-btn');
+    const taskList = document.getElementById('task-list');
+
+    // 保存されたタスクを読み込む
+    document.addEventListener('DOMContentLoaded', loadTasks);
+
+    // 追加ボタンクリック
+    addBtn.addEventListener('click', addTask);
+    // タスク入力欄でEnterキーでも追加
+    taskInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') addTask();
+    });
+
+    function addTask() {
+        const text = taskInput.value;
+        const desc = descInput.value;
+        const due = dueInput.value;
+        const priority = prioritySelect.value;
+
+        if (text === '') return alert("タスク名を入力してください！");
+
+        createTaskElement(text, desc, due, priority, false);
+        saveTasks();
+        
+        // 入力欄をクリア
+        taskInput.value = '';
+        descInput.value = '';
+        dueInput.value = '';
+        prioritySelect.value = 'mid'; 
+    }
+
+    function createTaskElement(text, desc, due, priority, completed) {
+        const li = document.createElement('li');
+        if(completed) li.classList.add('completed');
+
+        let dotClass = 'p-mid';
+        if(priority === 'high') dotClass = 'p-high';
+        if(priority === 'low') dotClass = 'p-low';
+
+        // 期限日の表示整形
+        const dueDisplay = due ? `📅 期限: ${due}` : '';
+        // 概要の表示整形
+        const descDisplay = desc ? `📝 ${desc}` : '';
+
+        li.innerHTML = `
+            <div class="task-info" onclick="toggleComplete(this)">
+                <div class="task-header">
+                    <span class="priority-dot ${dotClass}" title="優先度"></span>
+                    <span class="task-title task-main">${text}</span>
+                </div>
+                ${(desc || due) ? `
+                <div class="task-meta">
+                    ${dueDisplay ? `<span class="meta-item">${dueDisplay}</span>` : ''}
+                    ${descDisplay ? `<span class="meta-item">${descDisplay}</span>` : ''}
+                </div>
+                ` : ''}
+            </div>
+            <button class="delete-btn" onclick="deleteTask(this)">削除</button>
+        `;
+        
+        // 新しいタスクをリストの一番上に追加
+        taskList.prepend(li);
+    }
+
+    function toggleComplete(div) {
+        div.parentElement.classList.toggle('completed');
+        saveTasks();
+    }
+
+    function deleteTask(btn) {
+        if(confirm('このタスクを削除しますか？')) {
+            btn.parentElement.remove();
+            saveTasks();
+        }
+    }
+
+    // ローカルストレージに保存
+    function saveTasks() {
+        const tasks = [];
+        document.querySelectorAll('#task-list li').forEach(li => {
+            const title = li.querySelector('.task-title').innerText;
+            
+            // 概要と期限を取得（存在する場合のみ）
+            let desc = '';
+            let due = '';
+            const metaItems = li.querySelectorAll('.meta-item');
+            metaItems.forEach(item => {
+                const txt = item.innerText;
+                if(txt.includes('📝')) desc = txt.replace('📝 ', '');
+                if(txt.includes('📅')) due = txt.replace('📅 期限: ', '');
+            });
+
+            const completed = li.classList.contains('completed');
+            
+            let priority = 'mid';
+            if(li.querySelector('.p-high')) priority = 'high';
+            if(li.querySelector('.p-low')) priority = 'low';
+
+            tasks.push({ text: title, desc, due, priority, completed });
+        });
+        
+        // 表示順（上から）を維持して保存
+        localStorage.setItem('myTasksV2', JSON.stringify(tasks));
+    }
+
+    function loadTasks() {
+        // バージョンが変わってデータ構造が変わったためキーを'myTasksV2'に変更しましたが、
+        // 旧データがあれば読み込めるようにフォールバックしても良いです（今回は簡易的にV2新規としています）
+        const tasks = JSON.parse(localStorage.getItem('myTasksV2')) || [];
+        
+        taskList.innerHTML = '';
+        // prependで追加していくため、配列を逆順にして古いものから処理させる
+        tasks.reverse().forEach(task => { 
+             createTaskElement(task.text, task.desc, task.due, task.priority, task.completed);
+        });
+    }
+</script>
+</body>
+</html>
