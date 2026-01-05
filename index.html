@@ -14,14 +14,14 @@
     
     .row { display: flex; gap: 10px; }
     
-    /* スマホ用にrowを縦並びにする設定 (画面幅が狭い時) */
+    /* スマホ用にrowを縦並びにする設定 */
     @media (max-width: 480px) {
         .row { flex-direction: column; }
     }
 
-    input[type="text"], input[type="date"], select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+    input[type="text"], input[type="date"], select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
     /* 入力欄の幅調整 */
-    #task-input { flex-grow: 2; }
+    #task-input { flex-grow: 2; width: 100%; }
     #desc-input { flex-grow: 1; }
     #due-input { flex-grow: 0; }
     
@@ -49,7 +49,29 @@
     .p-mid { background-color: #f1c40f; }
     .p-low { background-color: #2ecc71; }
 
-    button.delete-btn { background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; align-self: center; }
+    /* ボタン群 */
+    .btn-group { display: flex; gap: 5px; flex-direction: column; justify-content: center; }
+    button.action-btn { color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+    .delete-btn { background: #e74c3c; }
+    .edit-btn { background: #2ecc71; }
+
+    /* --- 編集用モーダルのスタイル --- */
+    .modal-overlay {
+        display: none; /* 初期状態は非表示 */
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000;
+    }
+    .modal-content {
+        background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        display: flex; flex-direction: column; gap: 15px;
+    }
+    .modal-header { font-weight: bold; font-size: 1.2rem; color: #2c3e50; text-align: center; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 10px; }
+    .modal-actions button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .save-btn { background: #3498db; color: white; }
+    .cancel-btn { background: #95a5a6; color: white; }
+
 </style>
 </head>
 <body>
@@ -79,6 +101,24 @@
     </ul>
 </div>
 
+<div id="edit-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">タスクの編集</div>
+        <input type="text" id="edit-task-input" placeholder="タスク名">
+        <input type="text" id="edit-desc-input" placeholder="概要・詳細メモ">
+        <input type="date" id="edit-due-input">
+        <select id="edit-priority-select">
+            <option value="high">優先度: 高</option>
+            <option value="mid">優先度: 中</option>
+            <option value="low">優先度: 低</option>
+        </select>
+        <div class="modal-actions">
+            <button class="cancel-btn" onclick="closeEditModal()">キャンセル</button>
+            <button class="save-btn" onclick="saveEdit()">保存する</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // 要素の取得
     const taskInput = document.getElementById('task-input');
@@ -87,6 +127,14 @@
     const prioritySelect = document.getElementById('priority-select');
     const addBtn = document.getElementById('add-btn');
     const taskList = document.getElementById('task-list');
+
+    // 編集モーダル用の要素
+    const editModal = document.getElementById('edit-modal');
+    const editTaskInput = document.getElementById('edit-task-input');
+    const editDescInput = document.getElementById('edit-desc-input');
+    const editDueInput = document.getElementById('edit-due-input');
+    const editPrioritySelect = document.getElementById('edit-priority-select');
+    let currentEditLi = null; // 現在編集中のli要素を保持する変数
 
     // 保存されたタスクを読み込む
     document.addEventListener('DOMContentLoaded', loadTasks);
@@ -120,14 +168,27 @@
         const li = document.createElement('li');
         if(completed) li.classList.add('completed');
 
+        updateLiContent(li, text, desc, due, priority);
+        
+        // 新しいタスクをリストの一番上に追加
+        taskList.prepend(li);
+    }
+
+    // liの中身（HTML）を生成・更新する関数
+    function updateLiContent(li, text, desc, due, priority) {
         let dotClass = 'p-mid';
         if(priority === 'high') dotClass = 'p-high';
         if(priority === 'low') dotClass = 'p-low';
 
-        // 期限日の表示整形
+        // 期限と概要の表示整形
         const dueDisplay = due ? `📅 期限: ${due}` : '';
-        // 概要の表示整形
         const descDisplay = desc ? `📝 ${desc}` : '';
+
+        // 生データをdatasetに保存（編集時の読み込み用）
+        li.dataset.text = text;
+        li.dataset.desc = desc;
+        li.dataset.due = due;
+        li.dataset.priority = priority;
 
         li.innerHTML = `
             <div class="task-info" onclick="toggleComplete(this)">
@@ -142,11 +203,11 @@
                 </div>
                 ` : ''}
             </div>
-            <button class="delete-btn" onclick="deleteTask(this)">削除</button>
+            <div class="btn-group">
+                <button class="action-btn edit-btn" onclick="openEditModal(this)">編集</button>
+                <button class="action-btn delete-btn" onclick="deleteTask(this)">削除</button>
+            </div>
         `;
-        
-        // 新しいタスクをリストの一番上に追加
-        taskList.prepend(li);
     }
 
     function toggleComplete(div) {
@@ -156,47 +217,83 @@
 
     function deleteTask(btn) {
         if(confirm('このタスクを削除しますか？')) {
-            btn.parentElement.remove();
+            // 親の親（li）を探して削除
+            btn.closest('li').remove();
             saveTasks();
         }
     }
+
+    // --- 編集機能関連 ---
+
+    function openEditModal(btn) {
+        // ボタンの親の親であるli要素を取得
+        currentEditLi = btn.closest('li');
+        
+        // datasetから元の値を取得して入力欄にセット
+        editTaskInput.value = currentEditLi.dataset.text || "";
+        editDescInput.value = currentEditLi.dataset.desc || "";
+        editDueInput.value = currentEditLi.dataset.due || "";
+        editPrioritySelect.value = currentEditLi.dataset.priority || "mid";
+
+        // モーダルを表示
+        editModal.style.display = 'flex';
+    }
+
+    function closeEditModal() {
+        editModal.style.display = 'none';
+        currentEditLi = null;
+    }
+
+    function saveEdit() {
+        if (!currentEditLi) return;
+        
+        const newText = editTaskInput.value;
+        const newDesc = editDescInput.value;
+        const newDue = editDueInput.value;
+        const newPriority = editPrioritySelect.value;
+
+        if (newText === '') return alert("タスク名は必須です");
+
+        // liの中身を更新
+        updateLiContent(currentEditLi, newText, newDesc, newDue, newPriority);
+        
+        // ローカルストレージも更新
+        saveTasks();
+        closeEditModal();
+    }
+
+    // --- 保存・読み込み関連 ---
 
     // ローカルストレージに保存
     function saveTasks() {
         const tasks = [];
         document.querySelectorAll('#task-list li').forEach(li => {
-            const title = li.querySelector('.task-title').innerText;
-            
-            // 概要と期限を取得（存在する場合のみ）
-            let desc = '';
-            let due = '';
-            const metaItems = li.querySelectorAll('.meta-item');
-            metaItems.forEach(item => {
-                const txt = item.innerText;
-                if(txt.includes('📝')) desc = txt.replace('📝 ', '');
-                if(txt.includes('📅')) due = txt.replace('📅 期限: ', '');
-            });
-
+            // datasetから最新の値を取得して保存
+            const text = li.dataset.text;
+            const desc = li.dataset.desc;
+            const due = li.dataset.due;
+            const priority = li.dataset.priority;
             const completed = li.classList.contains('completed');
-            
-            let priority = 'mid';
-            if(li.querySelector('.p-high')) priority = 'high';
-            if(li.querySelector('.p-low')) priority = 'low';
 
-            tasks.push({ text: title, desc, due, priority, completed });
+            tasks.push({ text, desc, due, priority, completed });
         });
         
         // 表示順（上から）を維持して保存
-        localStorage.setItem('myTasksV2', JSON.stringify(tasks));
+        localStorage.setItem('myTasksV3', JSON.stringify(tasks));
     }
 
     function loadTasks() {
-        // バージョンが変わってデータ構造が変わったためキーを'myTasksV2'に変更しましたが、
-        // 旧データがあれば読み込めるようにフォールバックしても良いです（今回は簡易的にV2新規としています）
-        const tasks = JSON.parse(localStorage.getItem('myTasksV2')) || [];
+        // V3キーに変更（データ取得ロジックを変えたため）
+        // 古いV2データがあればそれを引き継いで表示できるようにフォールバック
+        let tasks = JSON.parse(localStorage.getItem('myTasksV3'));
         
+        // V3がない場合、以前のV2データを読み込んでみる（移行措置）
+        if (!tasks) {
+            tasks = JSON.parse(localStorage.getItem('myTasksV2')) || [];
+        }
+
         taskList.innerHTML = '';
-        // prependで追加していくため、配列を逆順にして古いものから処理させる
+        // 逆順で追加（prependのため）
         tasks.reverse().forEach(task => { 
              createTaskElement(task.text, task.desc, task.due, task.priority, task.completed);
         });
